@@ -140,6 +140,24 @@ class Model():
             except ImportError:
                 raise ValueError("Tried to import onnxruntime, but it was not found. Please install it using `pip install onnxruntime`")
 
+        if inference_framework == "rknn":
+            try:
+                from rknnlite.api import RKNNLite
+
+                def rknn_predict(rknn_model, x):
+                    try:
+                        outputs = rknn_model.inference(inputs=[x])
+                        if outputs and len(outputs) > 0:
+                            return outputs[0][None, ]
+                        else:
+                            return np.array([[0.0]])  # Return zero prediction if inference fails
+                    except Exception as e:
+                        print(f"RKNN inference error: {e}")
+                        return np.array([[0.0]])  # Return zero prediction on error
+
+            except ImportError:
+                raise ValueError("Tried to import RKNNLite, but it was not found. Please install it using `pip install rknnlite`")
+
         for mdl_path, mdl_name in zip(wakeword_models, wakeword_model_names):
             # Load openwakeword models
             if inference_framework == "onnx":
@@ -172,6 +190,26 @@ class Model():
                 tflite_output_index = self.models[mdl_name].get_output_details()[0]['index']
 
                 pred_function = functools.partial(tflite_predict, self.models[mdl_name], tflite_input_index, tflite_output_index)
+                self.model_prediction_function[mdl_name] = pred_function
+
+            if inference_framework == "rknn":
+                if ".tflite" in mdl_path or ".onnx" in mdl_path:
+                    raise ValueError("The rknn inference framework is selected, but tflite/onnx models were provided!")
+
+                self.models[mdl_name] = RKNNLite()
+                ret = self.models[mdl_name].load_rknn(mdl_path)
+                if ret != 0:
+                    raise ValueError(f"Failed to load RKNN model {mdl_name}: {ret}")
+                ret = self.models[mdl_name].init_runtime()
+                if ret != 0:
+                    raise ValueError(f"Failed to init RKNN runtime for {mdl_name}: {ret}")
+
+                # For RKNN models, we need to get input/output shapes differently
+                # These are typically fixed for RKNN models, so we'll use common openWakeWord dimensions
+                self.model_inputs[mdl_name] = 16  # Default input size for openWakeWord models
+                self.model_outputs[mdl_name] = 1   # Default output size for binary classification
+
+                pred_function = functools.partial(rknn_predict, self.models[mdl_name])
                 self.model_prediction_function[mdl_name] = pred_function
 
             if class_mapping_dicts and class_mapping_dicts[wakeword_models.index(mdl_path)].get(mdl_name, None):

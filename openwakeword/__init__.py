@@ -67,3 +67,7 @@ def get_pretrained_model_paths(inference_framework="tflite"):
         return [MODELS[i]["model_path"] for i in MODELS.keys()]
     elif inference_framework == "onnx":
         return [MODELS[i]["model_path"].replace(".tflite", ".onnx") for i in MODELS.keys()]
+    elif inference_framework == "rknn":
+        return [MODELS[i]["model_path"].replace(".tflite", ".rknn") for i in MODELS.keys()]
+    else:
+        raise ValueError(f"Unsupported inference framework: {inference_framework}. Supported frameworks are 'tflite', 'onnx', and 'rknn'.")

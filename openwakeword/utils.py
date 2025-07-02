@@ -160,6 +160,41 @@ class AudioFeatures():
 
             self.embedding_model_predict = tflite_embedding_predict
 
+        elif inference_framework == "rknn":
+            try:
+                from rknnlite.api import RKNNLite
+            except ImportError:
+                raise ValueError("Tried to import RKNNLite, but it was not found. "
+                                 "Please install it using `pip install rknnlite`")
+
+            # For RKNN, we'll use ONNX for feature models and RKNN for wake word models
+            # This is because the feature models have dynamic input shapes that are challenging to convert
+            if melspec_model_path == "":
+                melspec_model_path = os.path.join(pathlib.Path(__file__).parent.resolve(),
+                                                  "resources", "models", "melspectrogram.onnx")
+            if embedding_model_path == "":
+                embedding_model_path = os.path.join(pathlib.Path(__file__).parent.resolve(),
+                                                    "resources", "models", "embedding_model.onnx")
+
+            # Load melspectrogram model with ONNX
+            try:
+                import onnxruntime as ort
+                self.melspec_model = ort.InferenceSession(melspec_model_path)
+                def onnx_melspec_predict(x):
+                    return self.melspec_model.run(None, {self.melspec_model.get_inputs()[0].name: x})[0]
+                self.melspec_model_predict = onnx_melspec_predict
+            except Exception as e:
+                raise ValueError(f"Failed to load ONNX melspectrogram model: {e}")
+
+            # Load embedding model with ONNX
+            try:
+                self.embedding_model = ort.InferenceSession(embedding_model_path)
+                def onnx_embedding_predict(x):
+                    return self.embedding_model.run(None, {self.embedding_model.get_inputs()[0].name: x})[0].squeeze()
+                self.embedding_model_predict = onnx_embedding_predict
+            except Exception as e:
+                raise ValueError(f"Failed to load ONNX embedding model: {e}")
+
         # Create databuffers with empty/random data
         self.raw_data_buffer: Deque = deque(maxlen=sr*10)
         self.melspectrogram_buffer = np.ones((76, 32))  # n_frames x num_features
