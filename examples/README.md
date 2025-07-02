@@ -38,3 +38,96 @@ Note that if you have more than one microphone connected to your system, you may
 This is a script that estimates how many openWakeWord models could be run on on the specified number of cores for the current system. Can be useful to determine if a given system has the resources required for a particular use-case.
 
 To run the script: `python benchmark_efficiency.py --ncores <desired integer number of cores>`
+
+## RKNN Wake Word Detection
+
+This example demonstrates how to use openWakeWord with RKNN models for hardware-accelerated wake word detection on Rockchip NPUs (e.g., RK3588, RK3568).
+
+### Requirements
+
+- RKNN Toolkit 2.3.2 or later
+- Rockchip NPU (RK3588, RK3568, etc.)
+- openWakeWord with RKNN support
+
+### Usage
+
+Basic usage with default models:
+```bash
+python rknn_wake_word_detection.py
+```
+
+Use specific models:
+```bash
+python rknn_wake_word_detection.py --models alexa_v0.1,hey_mycroft_v0.1
+```
+
+Set custom threshold:
+```bash
+python rknn_wake_word_detection.py --threshold 0.7
+```
+
+Run performance benchmark:
+```bash
+python rknn_wake_word_detection.py --benchmark
+```
+
+Test with audio file:
+```bash
+python rknn_wake_word_detection.py --audio-file test_audio.wav
+```
+
+### Features
+
+- Hardware acceleration on Rockchip NPUs
+- Real-time wake word detection
+- Performance benchmarking
+- Support for multiple wake word models
+- Audio file processing
+- Configurable detection thresholds
+
+## Model Conversion Utilities
+
+### Convert Models to RKNN Format
+
+The `utils/convert_models_to_rknn.py` script converts openWakeWord models to RKNN format for deployment on Rockchip NPUs.
+
+#### Requirements
+
+- RKNN Toolkit 2.3.2 or later
+- openWakeWord models (ONNX or TFLite format)
+
+#### Usage
+
+Convert all available models:
+```bash
+python utils/convert_models_to_rknn.py
+```
+
+Convert specific models:
+```bash
+python utils/convert_models_to_rknn.py --models alexa_v0.1,hey_mycroft_v0.1
+```
+
+Convert for specific platform:
+```bash
+python utils/convert_models_to_rknn.py --platform rk3568
+```
+
+Convert with custom settings:
+```bash
+python utils/convert_models_to_rknn.py --no-quantization --optimization-level 2
+```
+
+Convert and validate:
+```bash
+python utils/convert_models_to_rknn.py --validate
+```
+
+#### Features
+
+- Batch conversion of multiple models
+- Platform-specific optimization
+- INT8 quantization support
+- Model validation
+- Performance benchmarking
+- Support for feature models

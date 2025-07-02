@@ -39,6 +39,8 @@ pip install openwakeword
 
 On Linux systems, both the [onnxruntime](https://pypi.org/project/onnxruntime/) package and [tflite-runtime](https://pypi.org/project/tflite-runtime/) packages will be installed as dependencies since both inference frameworks are supported. On Windows, only onnxruntime is installed due to a lack of support for modern versions of tflite.
 
+For hardware acceleration on Rockchip NPUs (e.g., RK3588, RK3568), openWakeWord also supports RKNN inference framework. See the [RKNN Integration](#rknn-integration) section for details.
+
 To (optionally) use [Speex](https://www.speex.org/) noise suppression on Linux systems to improve performance in noisy environments, install the Speex dependencies and then the pre-built Python package (see the assets [here](https://github.com/dscripka/openWakeWord/releases/tag/v0.1.1) for all .whl versions), adjusting for your python version and system architecture as needed.
 
 ```
@@ -95,6 +97,59 @@ bulk_predict(
 ```
 
 See `openwakeword/utils.py` and `openwakeword/model.py` for the full specification of class methods and utility functions.
+
+# RKNN Integration
+
+openWakeWord supports hardware acceleration on Rockchip NPUs (e.g., RK3588, RK3568) through RKNN inference framework. This enables real-time wake word detection with reduced CPU usage and improved performance.
+
+## Requirements
+
+- RKNN Toolkit 2.3.2 or later
+- Rockchip NPU (RK3588, RK3568, etc.)
+- openWakeWord with RKNN support
+
+## Usage
+
+```python
+import openwakeword
+from openwakeword.model import Model
+
+# Initialize with RKNN inference framework
+model = Model(
+    inference_framework="rknn",
+    wakeword_models=["alexa_v0.1", "hey_mycroft_v0.1"]
+)
+
+# Get predictions (same API as other frameworks)
+prediction = model.predict(audio_frame)
+```
+
+## Model Conversion
+
+Convert existing openWakeWord models to RKNN format:
+
+```bash
+# Convert all models
+python examples/utils/convert_models_to_rknn.py
+
+# Convert specific models
+python examples/utils/convert_models_to_rknn.py --models alexa_v0.1,hey_mycroft_v0.1
+
+# Convert for specific platform
+python examples/utils/convert_models_to_rknn.py --platform rk3568
+```
+
+## Examples
+
+See `examples/rknn_wake_word_detection.py` for a complete example of RKNN wake word detection with performance benchmarking.
+
+## Benefits
+
+- **Hardware Acceleration**: Models run on dedicated NPU hardware
+- **Reduced CPU Usage**: Offloads inference from CPU to NPU
+- **Real-time Performance**: Sub-millisecond inference times
+- **Power Efficiency**: Lower power consumption compared to CPU inference
+- **Batch Processing**: Support for multiple wake word models simultaneously
 
 # Recommendations for Usage
 
