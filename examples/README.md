@@ -85,6 +85,48 @@ python rknn_wake_word_detection.py --audio-file test_audio.wav
 - Audio file processing
 - Configurable detection thresholds
 
+## Live Testing
+
+The `live_testing/` directory contains comprehensive examples for real-time wake word detection with microphones.
+
+### Live Wake Word Detection
+
+A feature-rich script for real-time wake word detection with multiple device support, configurable parameters, and graceful error handling.
+
+#### Features
+
+- **Real-time audio capture** from microphone devices
+- **Multiple device support** with device selection and listing
+- **Configurable detection parameters** (threshold, interval)
+- **Multiple wake word model support**
+- **Graceful error handling** and shutdown
+- **Audio level monitoring**
+
+#### Usage
+
+```bash
+# List available audio devices
+python3 live_testing/live_wake_word_detection.py --list
+
+# Use default device (device 1)
+python3 live_testing/live_wake_word_detection.py
+
+# Use specific device
+python3 live_testing/live_wake_word_detection.py 1  # USB microphone
+python3 live_testing/live_wake_word_detection.py 0  # Built-in microphone
+
+# Advanced usage
+python3 live_testing/live_wake_word_detection.py --model alexa --threshold 0.7 --interval 0.25
+```
+
+#### Requirements
+
+```bash
+pip install pyaudio numpy
+```
+
+For detailed documentation, see [live_testing/README.md](live_testing/README.md).
+
 ## Model Conversion Utilities
 
 ### Convert Models to RKNN Format
