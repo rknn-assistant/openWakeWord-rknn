@@ -75,9 +75,10 @@ class Model():
                                                associated custom verifier model will also predict on that frame, and
                                                the verifier score will be returned.
             inference_framework (str): The inference framework to use when for model prediction. Options are
-                                       "tflite" or "onnx". The default is "tflite" as this results in better
+                                       "tflite", "onnx", "opencl", or "rknn". The default is "tflite" as this results in better
                                        efficiency on common platforms (x86, ARM64), but in some deployment
-                                       scenarios ONNX models may be preferable.
+                                       scenarios ONNX models may be preferable. "opencl" enables GPU acceleration
+                                       using OpenCL (useful for Mali GPUs), and "rknn" enables NPU acceleration.
             kwargs (dict): Any other keyword arguments to pass the the preprocessor instance
         """
         # Get model paths for pre-trained models if user doesn't provide models to load
@@ -130,7 +131,7 @@ class Model():
                     raise ValueError("Tried to import the tflite runtime for provided tflite models, but it was not found. "
                                      "Please install it using `pip install tflite-runtime`")
 
-        if inference_framework == "onnx":
+        if inference_framework == "onnx" or inference_framework == "opencl":
             try:
                 import onnxruntime as ort
 
@@ -210,6 +211,48 @@ class Model():
                 self.model_outputs[mdl_name] = 1   # Default output size for binary classification
 
                 pred_function = functools.partial(rknn_predict, self.models[mdl_name])
+                self.model_prediction_function[mdl_name] = pred_function
+
+            if inference_framework == "opencl":
+                if ".tflite" in mdl_path:
+                    raise ValueError("The opencl inference framework is selected, but tflite models were provided!")
+
+                try:
+                    import onnxruntime as ort
+                except ImportError:
+                    raise ValueError("Tried to import onnxruntime, but it was not found. Please install it using `pip install onnxruntime`")
+
+                sessionOptions = ort.SessionOptions()
+                sessionOptions.inter_op_num_threads = 1
+                sessionOptions.intra_op_num_threads = 1
+
+                # Configure OpenCL execution provider for Mali GPU
+                opencl_provider_options = {
+                    'device_type': 'GPU',
+                    'device_id': 0,
+                    'platform_id': 0,
+                    'memory_pool_size': 1024 * 1024 * 1024,  # 1GB memory pool
+                    'arena_extend_strategy': 'kNextPowerOfTwo',
+                    'gpu_mem_limit': 1024 * 1024 * 1024,  # 1GB GPU memory limit
+                    'cudnn_conv_use_max_workspace': '1',
+                    'do_copy_in_default_stream': '1',
+                }
+
+                try:
+                    self.models[mdl_name] = ort.InferenceSession(
+                        mdl_path, 
+                        sess_options=sessionOptions,
+                        providers=[('OpenCLExecutionProvider', opencl_provider_options), 'CPUExecutionProvider']
+                    )
+                    print(f"Wake word model {mdl_name} loaded with provider: {self.models[mdl_name].get_providers()[0]}")
+                except Exception as e:
+                    print(f"Warning: Failed to load wake word model {mdl_name} with OpenCL: {e}")
+                    print("Falling back to CPU execution")
+                    self.models[mdl_name] = ort.InferenceSession(mdl_path, sess_options=sessionOptions)
+
+                self.model_inputs[mdl_name] = self.models[mdl_name].get_inputs()[0].shape[1]
+                self.model_outputs[mdl_name] = self.models[mdl_name].get_outputs()[0].shape[1]
+                pred_function = functools.partial(onnx_predict, self.models[mdl_name])
                 self.model_prediction_function[mdl_name] = pred_function
 
             if class_mapping_dicts and class_mapping_dicts[wakeword_models.index(mdl_path)].get(mdl_name, None):

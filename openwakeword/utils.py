@@ -80,16 +80,22 @@ class AudioFeatures():
             sessionOptions.inter_op_num_threads = ncpu
             sessionOptions.intra_op_num_threads = ncpu
 
+            # Determine execution providers based on device
+            if device == "gpu":
+                # Try OpenCL first (for Mali GPU), then CUDA, then CPU
+                providers = ["OpenCLExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
+
             # Melspectrogram model
             self.melspec_model = ort.InferenceSession(melspec_model_path, sess_options=sessionOptions,
-                                                      providers=["CUDAExecutionProvider"] if device == "gpu" else ["CPUExecutionProvider"])
+                                                      providers=providers)
             self.onnx_execution_provider = self.melspec_model.get_providers()[0]
             self.melspec_model_predict = lambda x: self.melspec_model.run(None, {'input': x})
 
             # Audio embedding model
             self.embedding_model = ort.InferenceSession(embedding_model_path, sess_options=sessionOptions,
-                                                        providers=["CUDAExecutionProvider"] if device == "gpu"
-                                                        else ["CPUExecutionProvider"])
+                                                        providers=providers)
             self.embedding_model_predict = lambda x: self.embedding_model.run(None, {'input_1': x})[0].squeeze()
 
         elif inference_framework == "tflite":
@@ -194,6 +200,71 @@ class AudioFeatures():
                 self.embedding_model_predict = onnx_embedding_predict
             except Exception as e:
                 raise ValueError(f"Failed to load ONNX embedding model: {e}")
+
+        elif inference_framework == "opencl":
+            try:
+                import onnxruntime as ort
+            except ImportError:
+                raise ValueError("Tried to import onnxruntime, but it was not found. Please install it using `pip install onnxruntime`")
+
+            if melspec_model_path == "":
+                melspec_model_path = os.path.join(pathlib.Path(__file__).parent.resolve(),
+                                                  "resources", "models", "melspectrogram.onnx")
+            if embedding_model_path == "":
+                embedding_model_path = os.path.join(pathlib.Path(__file__).parent.resolve(),
+                                                    "resources", "models", "embedding_model.onnx")
+
+            if ".tflite" in melspec_model_path or ".tflite" in embedding_model_path:
+                raise ValueError("The opencl inference framework is selected, but tflite models were provided!")
+
+            # Initialize ONNX options for OpenCL
+            sessionOptions = ort.SessionOptions()
+            sessionOptions.inter_op_num_threads = ncpu
+            sessionOptions.intra_op_num_threads = ncpu
+
+            # Configure OpenCL execution provider for Mali GPU
+            opencl_provider_options = {
+                'device_type': 'GPU',
+                'device_id': 0,
+                'platform_id': 0,
+                'memory_pool_size': 1024 * 1024 * 1024,  # 1GB memory pool
+                'arena_extend_strategy': 'kNextPowerOfTwo',
+                'gpu_mem_limit': 1024 * 1024 * 1024,  # 1GB GPU memory limit
+                'cudnn_conv_use_max_workspace': '1',
+                'do_copy_in_default_stream': '1',
+            }
+
+            # Melspectrogram model with OpenCL
+            try:
+                self.melspec_model = ort.InferenceSession(
+                    melspec_model_path, 
+                    sess_options=sessionOptions,
+                    providers=[('OpenCLExecutionProvider', opencl_provider_options), 'CPUExecutionProvider']
+                )
+                self.onnx_execution_provider = self.melspec_model.get_providers()[0]
+                self.melspec_model_predict = lambda x: self.melspec_model.run(None, {'input': x})
+                print(f"Melspectrogram model loaded with provider: {self.onnx_execution_provider}")
+            except Exception as e:
+                print(f"Warning: Failed to load melspectrogram model with OpenCL: {e}")
+                print("Falling back to CPU execution")
+                self.melspec_model = ort.InferenceSession(melspec_model_path, sess_options=sessionOptions)
+                self.onnx_execution_provider = "CPUExecutionProvider"
+                self.melspec_model_predict = lambda x: self.melspec_model.run(None, {'input': x})
+
+            # Audio embedding model with OpenCL
+            try:
+                self.embedding_model = ort.InferenceSession(
+                    embedding_model_path, 
+                    sess_options=sessionOptions,
+                    providers=[('OpenCLExecutionProvider', opencl_provider_options), 'CPUExecutionProvider']
+                )
+                self.embedding_model_predict = lambda x: self.embedding_model.run(None, {'input_1': x})[0].squeeze()
+                print(f"Embedding model loaded with provider: {self.embedding_model.get_providers()[0]}")
+            except Exception as e:
+                print(f"Warning: Failed to load embedding model with OpenCL: {e}")
+                print("Falling back to CPU execution")
+                self.embedding_model = ort.InferenceSession(embedding_model_path, sess_options=sessionOptions)
+                self.embedding_model_predict = lambda x: self.embedding_model.run(None, {'input_1': x})[0].squeeze()
 
         # Create databuffers with empty/random data
         self.raw_data_buffer: Deque = deque(maxlen=sr*10)
@@ -308,7 +379,7 @@ class AudioFeatures():
         for i in range(0, max(batch_size, x.shape[0]), batch_size):
             batch = x[i:i+batch_size]
 
-            if "CUDA" in self.onnx_execution_provider:
+            if "CUDA" in self.onnx_execution_provider or "OpenCL" in self.onnx_execution_provider:
                 result = self._get_melspectrogram(batch)
 
             elif pool:
@@ -370,7 +441,7 @@ class AudioFeatures():
 
             if len(batch) >= batch_size or ndx+1 == x.shape[0]:
                 batch = np.array(batch).astype(np.float32)
-                if "CUDA" in self.onnx_execution_provider:
+                if "CUDA" in self.onnx_execution_provider or "OpenCL" in self.onnx_execution_provider:
                     result = self.embedding_model_predict(batch)
 
                 elif pool:
